@@ -1,0 +1,131 @@
+plugins {
+	id 'java'
+	id 'java-library'
+	id 'eclipse'
+	id 'maven-publish'
+	id 'org.quiltmc.gradle.licenser' version '2.0.1'
+}
+
+java {
+	toolchain {
+		languageVersion.set(JavaLanguageVersion.of(21))
+	}
+	withJavadocJar()
+	withSourcesJar()
+}
+
+archivesBaseName = "quilt-multi-java-gen"
+version = project.quilt_multi_java_gen
+def ENV = System.getenv()
+
+apply plugin: 'java-library'
+apply plugin: 'eclipse'
+
+if (ENV.SNAPSHOTS_URL) {
+	version = version + "-SNAPSHOT"
+}
+if (!ENV.GITHUB_ACTIONS) {
+	version = version + "+local"
+}
+
+repositories {
+	maven {
+		name = 'Quilt'
+		url = 'https://maven.quiltmc.org/repository/release'
+	}
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies {
+    compileOnly "org.jetbrains:annotations:${project.annotations}"
+    implementation "org.eclipse.jdt:org.eclipse.jdt.core:${project.jdtcore}"
+    api "org.quiltmc:quilt-mod-spec:0.1.5+local"
+}
+
+test {
+	useJUnitPlatform()
+}
+
+tasks.withType(AbstractArchiveTask) {
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = "UTF-8"
+}
+
+javadoc {
+	javadocTool.set javaToolchains.javadocToolFor {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+
+	options {
+		if (file("README.html").exists()) {
+			overview = "README.html"
+		}
+		destinationDir = file("${buildDir}/docs/${project.version}")
+		source = "8"
+		encoding = 'UTF-8'
+		charSet = 'UTF-8'
+		memberLevel = JavadocMemberLevel.PACKAGE
+		splitIndex true
+		links(
+				'https://docs.oracle.com/javase/8/docs/api/'
+		)
+
+		addBooleanOption 'Xdoclint:html', true
+		addBooleanOption 'Xdoclint:syntax', true
+		addBooleanOption 'Xdoclint:reference', true
+		addBooleanOption 'Xdoclint:accessibility', true
+		addStringOption("-notimestamp")
+		addStringOption("Xdoclint:none")
+		addStringOption("-quiet")
+		addFileOption "-add-stylesheet", file("src/main/javadoc/style.css")
+	}
+
+	source sourceSets.main.allJava.srcDirs
+	classpath = sourceSets.main.compileClasspath + sourceSets.main.output // compile impl stuff for dep as well
+	include("**/api/**")
+	// workaround as one of the api stuff use that package
+	failOnError false
+}
+
+license {
+	rule project.rootProject.file("codeformat/HEADER")
+	include '**/*.java'
+}
+
+
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			// add all the jars that should be included when publishing to maven
+			from components.java
+		}
+	}
+
+	repositories {
+		if (ENV.MAVEN_URL) {
+			maven {
+				url ENV.MAVEN_URL
+				credentials {
+					username ENV.MAVEN_USERNAME
+					password ENV.MAVEN_PASSWORD
+				}
+			}
+		} else if (ENV.SNAPSHOTS_URL) {
+			maven {
+				url ENV.SNAPSHOTS_URL
+
+				credentials {
+					username ENV.SNAPSHOTS_USERNAME
+					password ENV.SNAPSHOTS_PASSWORD
+				}
+			}
+		} else {
+			mavenLocal()
+		}
+	}
+}
